@@ -179,6 +179,57 @@ class VertexPassthroughLoggingHandler:
                 "kwargs": kwargs,
             }
         
+        elif "/operations/" in url_route:
+            """
+            Handler for Vertex AI Operations retrieve endpoint
+            
+            Example endpoint: /vertex_ai/v1/projects/{project}/locations/{location}/operations/{operation-id}
+            
+            This handles retrieving the status of long-running operations (like video generation).
+            Used to check if a predictLongRunning operation has completed.
+            """
+            try:
+                _json_response = httpx_response.json()
+            except Exception:
+                _json_response = {}
+            
+            # Create a standard response object for operation status
+            operation_response = ModelResponse()
+            operation_response.id = _json_response.get("name", "unknown-operation")
+            operation_response.model = "vertex_ai/operations"
+            operation_response.object = "operation.status"
+            operation_response.created = int(start_time.timestamp())
+            
+            # Extract operation status
+            operation_done = _json_response.get("done", False)
+            operation_metadata = _json_response.get("metadata", {})
+            
+            # Set usage to zero for status checks (no cost)
+            from litellm.types.utils import Usage
+            operation_response.usage = Usage(
+                prompt_tokens=0,
+                completion_tokens=0,
+                total_tokens=0,
+            )
+            
+            # No cost for operation status retrieval
+            response_cost = 0.0
+            
+            kwargs["response_cost"] = response_cost
+            kwargs["model"] = "vertex_ai/operations"
+            kwargs["operation_done"] = operation_done
+            logging_obj.model_call_details["response_cost"] = response_cost
+            logging_obj.model_call_details["operation_done"] = operation_done
+            
+            verbose_proxy_logger.info(
+                f"Vertex AI Operation Retrieve - operation: {operation_response.id}, done: {operation_done}"
+            )
+            
+            return {
+                "result": operation_response,
+                "kwargs": kwargs,
+            }
+        
         elif "predict" in url_route:
             from litellm.llms.vertex_ai.image_generation.image_generation_handler import (
                 VertexImageGeneration,

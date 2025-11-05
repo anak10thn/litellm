@@ -335,6 +335,8 @@ class LiteLLMRoutes(enum.Enum):
         "/bedrock",
         "/vertex-ai",
         "/vertex_ai",
+        "/vertex-ai/publishers/google/models",
+        "/vertex_ai/publishers/google/models",
         "/cohere",
         "/gemini",
         "/anthropic",
