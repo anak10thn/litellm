@@ -155,6 +155,7 @@ class VertexPassthroughLoggingHandler:
             # Calculate cost using video generation pricing
             logging_obj.model = f"vertex_ai/{model}"
             logging_obj.model_call_details["model"] = logging_obj.model
+            logging_obj.model_call_details["custom_llm_provider"] = "vertex_ai"
             
             response_cost = litellm.completion_cost(
                 completion_response=litellm_video_response,
