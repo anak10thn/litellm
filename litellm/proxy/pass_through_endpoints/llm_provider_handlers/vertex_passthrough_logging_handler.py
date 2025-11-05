@@ -88,6 +88,96 @@ class VertexPassthroughLoggingHandler:
                 "kwargs": kwargs,
             }
 
+        elif "predictLongRunning" in url_route:
+            """
+            Handler for Vertex AI Video Generation (Veo-3) with predictLongRunning endpoint
+            
+            Example endpoint: /vertex_ai/v1/projects/{project}/locations/{location}/publishers/google/models/veo-3.0-generate-001:predictLongRunning
+            
+            This handles long-running video generation operations that return an operation object.
+            The actual video generation happens asynchronously, and this logs the initial request.
+            """
+            from litellm.types.utils import Usage
+            
+            model = VertexPassthroughLoggingHandler.extract_model_from_url(url_route)
+            
+            try:
+                _json_response = httpx_response.json()
+            except Exception:
+                _json_response = {}
+            
+            # For predictLongRunning, the response contains an operation object
+            # We need to extract video duration from the request parameters if available
+            # Default to 8 seconds if not specified (typical Veo-3 default)
+            duration_seconds = 8.0
+            
+            # Try to get duration from request body if available in kwargs
+            request_body = kwargs.get("request_body", {})
+            if isinstance(request_body, dict):
+                parameters = request_body.get("parameters", {})
+                if isinstance(parameters, dict):
+                    # Check for duration in various possible formats
+                    if "duration" in parameters:
+                        duration_str = parameters["duration"]
+                        # Parse duration string like "5s" or just "5"
+                        if isinstance(duration_str, str):
+                            if duration_str.endswith("s"):
+                                duration_seconds = float(duration_str[:-1])
+                            else:
+                                try:
+                                    duration_seconds = float(duration_str)
+                                except ValueError:
+                                    pass
+                        elif isinstance(duration_str, (int, float)):
+                            duration_seconds = float(duration_str)
+            
+            # Create a ModelResponse with usage info for cost calculation
+            litellm_video_response = ModelResponse()
+            litellm_video_response.id = _json_response.get("name", "unknown-operation")
+            litellm_video_response.model = model
+            litellm_video_response.object = "video.generation"
+            litellm_video_response.created = int(start_time.timestamp())
+            
+            # Set usage with duration for cost calculation
+            litellm_video_response.usage = Usage(
+                prompt_tokens=0,
+                completion_tokens=0,
+                total_tokens=0,
+            )
+            # Add duration_seconds as a custom field for video cost calculation
+            if hasattr(litellm_video_response.usage, '__dict__'):
+                litellm_video_response.usage.__dict__['duration_seconds'] = duration_seconds
+            
+            # Set call type for video generation
+            from litellm.types.utils import CallTypes
+            logging_obj.call_type = CallTypes.create_video.value
+            
+            # Calculate cost using video generation pricing
+            logging_obj.model = f"vertex_ai/{model}"
+            logging_obj.model_call_details["model"] = logging_obj.model
+            
+            response_cost = litellm.completion_cost(
+                completion_response=litellm_video_response,
+                model=f"vertex_ai/{model}",
+                custom_llm_provider="vertex_ai",
+                call_type="create_video",
+            )
+            
+            kwargs["response_cost"] = response_cost
+            kwargs["model"] = f"vertex_ai/{model}"
+            kwargs["duration_seconds"] = duration_seconds
+            logging_obj.model_call_details["response_cost"] = response_cost
+            logging_obj.model_call_details["duration_seconds"] = duration_seconds
+            
+            verbose_proxy_logger.info(
+                f"Vertex AI Video Generation (predictLongRunning) - model: {model}, duration: {duration_seconds}s, cost: ${response_cost:.4f}"
+            )
+            
+            return {
+                "result": litellm_video_response,
+                "kwargs": kwargs,
+            }
+        
         elif "predict" in url_route:
             from litellm.llms.vertex_ai.image_generation.image_generation_handler import (
                 VertexImageGeneration,
