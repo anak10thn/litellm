@@ -1824,42 +1824,42 @@ async def vertex_models_proxy_route(
         user_api_key_dict=user_api_key_dict,
     )
     
-@router.api_route(
-    "/openai/{endpoint:path}",
-    methods=["GET", "POST", "PUT", "DELETE", "PATCH"],
-    tags=["OpenAI Pass-through", "pass-through"],
-)
-async def openai_proxy_route(
-    endpoint: str,
-    request: Request,
-    fastapi_response: Response,
-    user_api_key_dict: UserAPIKeyAuth = Depends(user_api_key_auth),
-):
-    """
-    Simple pass-through for OpenAI. Use this if you want to directly send a request to OpenAI.
+# @router.api_route(
+#     "/openai/{endpoint:path}",
+#     methods=["GET", "POST", "PUT", "DELETE", "PATCH"],
+#     tags=["OpenAI Pass-through", "pass-through"],
+# )
+# async def openai_proxy_route(
+#     endpoint: str,
+#     request: Request,
+#     fastapi_response: Response,
+#     user_api_key_dict: UserAPIKeyAuth = Depends(user_api_key_auth),
+# ):
+#     """
+#     Simple pass-through for OpenAI. Use this if you want to directly send a request to OpenAI.
 
 
-    """
-    base_target_url = os.getenv("OPENAI_API_BASE") or "https://api.openai.com/"
-    # Add or update query parameters
-    openai_api_key = passthrough_endpoint_router.get_credentials(
-        custom_llm_provider=litellm.LlmProviders.OPENAI.value,
-        region_name=None,
-    )
-    if openai_api_key is None:
-        raise Exception(
-            "Required 'OPENAI_API_KEY' in environment to make pass-through calls to OpenAI."
-        )
+#     """
+#     base_target_url = os.getenv("OPENAI_API_BASE") or "https://api.openai.com/"
+#     # Add or update query parameters
+#     openai_api_key = passthrough_endpoint_router.get_credentials(
+#         custom_llm_provider=litellm.LlmProviders.OPENAI.value,
+#         region_name=None,
+#     )
+#     if openai_api_key is None:
+#         raise Exception(
+#             "Required 'OPENAI_API_KEY' in environment to make pass-through calls to OpenAI."
+#         )
 
-    return await BaseOpenAIPassThroughHandler._base_openai_pass_through_handler(
-        endpoint=endpoint,
-        request=request,
-        fastapi_response=fastapi_response,
-        user_api_key_dict=user_api_key_dict,
-        base_target_url=base_target_url,
-        api_key=openai_api_key,
-        custom_llm_provider=litellm.LlmProviders.OPENAI,
-    )
+#     return await BaseOpenAIPassThroughHandler._base_openai_pass_through_handler(
+#         endpoint=endpoint,
+#         request=request,
+#         fastapi_response=fastapi_response,
+#         user_api_key_dict=user_api_key_dict,
+#         base_target_url=base_target_url,
+#         api_key=openai_api_key,
+#         custom_llm_provider=litellm.LlmProviders.OPENAI,
+#     )
 
 
 class BaseOpenAIPassThroughHandler:
