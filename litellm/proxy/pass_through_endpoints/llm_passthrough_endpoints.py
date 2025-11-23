@@ -1743,41 +1743,123 @@ async def vertex_proxy_route(
 
 
 @router.api_route(
-    "/openai/{endpoint:path}",
+    "/vertex-ai/publishers/google/models/{model:path}",
     methods=["GET", "POST", "PUT", "DELETE", "PATCH"],
-    tags=["OpenAI Pass-through", "pass-through"],
+    tags=["Vertex AI Models Pass-through", "pass-through"],
+    include_in_schema=False,
 )
-async def openai_proxy_route(
-    endpoint: str,
+@router.api_route(
+    "/vertex_ai/publishers/google/models/{model:path}",
+    methods=["GET", "POST", "PUT", "DELETE", "PATCH"],
+    tags=["Vertex AI Models Pass-through", "pass-through"],
+)
+async def vertex_models_proxy_route(
+    model: str,
     request: Request,
     fastapi_response: Response,
     user_api_key_dict: UserAPIKeyAuth = Depends(user_api_key_auth),
 ):
     """
-    Simple pass-through for OpenAI. Use this if you want to directly send a request to OpenAI.
-
-
+    Vertex AI models endpoint for video generation and other model operations.
+    
+    Supports both predictLongRunning (for video generation) and retrieve operations.
+    
+    Examples:
+    - POST /vertex_ai/publishers/google/models/veo-3.0-generate-001:predictLongRunning
+    - GET /vertex_ai/models/operations/{operation-id}
+    
+    Configuration:
+    - Set VERTEXAI_PROJECT or DEFAULT_VERTEXAI_PROJECT in environment
+    - Set VERTEXAI_LOCATION or DEFAULT_VERTEXAI_LOCATION in environment
+    - Or pass vertex_project and vertex_location as query parameters
+    
+    [Docs](https://docs.litellm.ai/docs/pass_through/vertex_ai)
     """
-    base_target_url = os.getenv("OPENAI_API_BASE") or "https://api.openai.com/"
-    # Add or update query parameters
-    openai_api_key = passthrough_endpoint_router.get_credentials(
-        custom_llm_provider=litellm.LlmProviders.OPENAI.value,
-        region_name=None,
+    import os
+    
+    # Extract project and location with priority:
+    # 1. Query parameters
+    # 2. Environment variables (VERTEXAI_PROJECT/VERTEXAI_LOCATION)
+    # 3. Default environment variables (DEFAULT_VERTEXAI_PROJECT/DEFAULT_VERTEXAI_LOCATION)
+    # 4. Hardcoded defaults
+    
+    vertex_project = (
+        request.query_params.get("vertex_project")
+        or os.getenv("VERTEXAI_PROJECT")
+        or os.getenv("DEFAULT_VERTEXAI_PROJECT")
     )
-    if openai_api_key is None:
-        raise Exception(
-            "Required 'OPENAI_API_KEY' in environment to make pass-through calls to OpenAI."
+    
+    vertex_location = (
+        request.query_params.get("vertex_location")
+        or os.getenv("VERTEXAI_LOCATION")
+        or os.getenv("DEFAULT_VERTEXAI_LOCATION")
+        or "us-central1"  # Default location for Veo 3
+    )
+    
+    if not vertex_project:
+        raise HTTPException(
+            status_code=400,
+            detail="vertex_project is required. Set VERTEXAI_PROJECT environment variable or pass vertex_project query parameter."
         )
+    # Construct the endpoint path for Vertex AI
+    # Note: construct_target_url will add the version prefix (v1), so we don't include it here
+    # Handle both model operations and retrieve operations
+    if model.startswith("operations/"):
+        # This is a retrieve operation for checking status
+        # Format: GET /vertex_ai/veo3/operations/{operation-id}
+        endpoint_path = f"/projects/{vertex_project}/locations/{vertex_location}/{model}"
+    else:
+        # This is a model operation (predictLongRunning, etc.)
+        endpoint_path = f"/projects/{vertex_project}/locations/{vertex_location}/publishers/google/models/{model}"
+    
+    verbose_proxy_logger.debug(f"Veo3 target URL: {endpoint_path}")
 
-    return await BaseOpenAIPassThroughHandler._base_openai_pass_through_handler(
-        endpoint=endpoint,
+    ai_platform_handler = get_vertex_pass_through_handler(call_type="aiplatform")
+
+    return await _base_vertex_proxy_route(
+        endpoint=endpoint_path,
         request=request,
         fastapi_response=fastapi_response,
+        get_vertex_pass_through_handler=ai_platform_handler,
         user_api_key_dict=user_api_key_dict,
-        base_target_url=base_target_url,
-        api_key=openai_api_key,
-        custom_llm_provider=litellm.LlmProviders.OPENAI,
     )
+    
+# @router.api_route(
+#     "/openai/{endpoint:path}",
+#     methods=["GET", "POST", "PUT", "DELETE", "PATCH"],
+#     tags=["OpenAI Pass-through", "pass-through"],
+# )
+# async def openai_proxy_route(
+#     endpoint: str,
+#     request: Request,
+#     fastapi_response: Response,
+#     user_api_key_dict: UserAPIKeyAuth = Depends(user_api_key_auth),
+# ):
+#     """
+#     Simple pass-through for OpenAI. Use this if you want to directly send a request to OpenAI.
+
+
+#     """
+#     base_target_url = os.getenv("OPENAI_API_BASE") or "https://api.openai.com/"
+#     # Add or update query parameters
+#     openai_api_key = passthrough_endpoint_router.get_credentials(
+#         custom_llm_provider=litellm.LlmProviders.OPENAI.value,
+#         region_name=None,
+#     )
+#     if openai_api_key is None:
+#         raise Exception(
+#             "Required 'OPENAI_API_KEY' in environment to make pass-through calls to OpenAI."
+#         )
+
+#     return await BaseOpenAIPassThroughHandler._base_openai_pass_through_handler(
+#         endpoint=endpoint,
+#         request=request,
+#         fastapi_response=fastapi_response,
+#         user_api_key_dict=user_api_key_dict,
+#         base_target_url=base_target_url,
+#         api_key=openai_api_key,
+#         custom_llm_provider=litellm.LlmProviders.OPENAI,
+#     )
 
 
 class BaseOpenAIPassThroughHandler:
