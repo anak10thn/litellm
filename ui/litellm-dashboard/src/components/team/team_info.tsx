@@ -25,7 +25,7 @@ import {
   teamUpdateCall,
   getGuardrailsList,
 } from "@/components/networking";
-import { Button, Form, Input, Select, message, Modal, Tooltip } from "antd";
+import { Button, Form, Input, Select, Switch, message, Modal, Tooltip } from "antd";
 import { InfoCircleOutlined } from "@ant-design/icons";
 import { ArrowLeftIcon } from "@heroicons/react/outline";
 import MemberModal from "./edit_membership";
@@ -357,23 +357,22 @@ const TeamInfoView: React.FC<TeamInfoProps> = ({
         servers: [],
         accessGroups: [],
       };
-      const mcpToolPermissions = values.mcp_tool_permissions || {};
+      const serverIds = new Set(servers || []);
+      const mcpToolPermissions = Object.fromEntries(
+        Object.entries(values.mcp_tool_permissions || {}).filter(([serverId]) =>
+          serverIds.has(serverId)
+        )
+      );
 
-      if (
-        (servers && servers.length > 0) ||
-        (accessGroups && accessGroups.length > 0) ||
-        Object.keys(mcpToolPermissions).length > 0
-      ) {
-        updateData.object_permission = {};
-        if (servers && servers.length > 0) {
-          updateData.object_permission.mcp_servers = servers;
-        }
-        if (accessGroups && accessGroups.length > 0) {
-          updateData.object_permission.mcp_access_groups = accessGroups;
-        }
-        if (Object.keys(mcpToolPermissions).length > 0) {
-          updateData.object_permission.mcp_tool_permissions = mcpToolPermissions;
-        }
+      updateData.object_permission = {};
+      if (servers) {
+        updateData.object_permission.mcp_servers = servers;
+      }
+      if (accessGroups) {
+        updateData.object_permission.mcp_access_groups = accessGroups;
+      }
+      if (mcpToolPermissions) {
+        updateData.object_permission.mcp_tool_permissions = mcpToolPermissions;
       }
       delete values.mcp_servers_and_groups;
       delete values.mcp_tool_permissions;
@@ -559,6 +558,7 @@ const TeamInfoView: React.FC<TeamInfoProps> = ({
                     team_member_tpm_limit: info.team_member_budget_table?.tpm_limit,
                     team_member_rpm_limit: info.team_member_budget_table?.rpm_limit,
                     guardrails: info.metadata?.guardrails || [],
+                    disable_global_guardrails: info.metadata?.disable_global_guardrails || false,
                     metadata: info.metadata
                       ? JSON.stringify((({ logging, ...rest }) => rest)(info.metadata), null, 2)
                       : "",
@@ -671,6 +671,25 @@ const TeamInfoView: React.FC<TeamInfoProps> = ({
                       mode="tags"
                       placeholder="Select or enter guardrails"
                       options={guardrailsList.map((name) => ({ value: name, label: name }))}
+                    />
+                  </Form.Item>
+
+                  <Form.Item
+                    label={
+                      <span>
+                        Disable Global Guardrails{" "}
+                        <Tooltip title="When enabled, this team will bypass any guardrails configured to run on every request (global guardrails)">
+                          <InfoCircleOutlined style={{ marginLeft: "4px" }} />
+                        </Tooltip>
+                      </span>
+                    }
+                    name="disable_global_guardrails"
+                    valuePropName="checked"
+                    help="Bypass global guardrails for this team"
+                  >
+                    <Switch
+                      checkedChildren="Yes"
+                      unCheckedChildren="No"
                     />
                   </Form.Item>
 
@@ -805,6 +824,17 @@ const TeamInfoView: React.FC<TeamInfoProps> = ({
                   <div>
                     <Text className="font-medium">Status</Text>
                     <Badge color={info.blocked ? "red" : "green"}>{info.blocked ? "Blocked" : "Active"}</Badge>
+                  </div>
+
+                  <div>
+                    <Text className="font-medium">Disable Global Guardrails</Text>
+                    <div>
+                      {info.metadata?.disable_global_guardrails === true ? (
+                        <Badge color="yellow">Enabled - Global guardrails bypassed</Badge>
+                      ) : (
+                        <Badge color="green">Disabled - Global guardrails active</Badge>
+                      )}
+                    </div>
                   </div>
 
                   <ObjectPermissionsView

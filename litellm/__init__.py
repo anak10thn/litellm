@@ -4,8 +4,10 @@ import warnings
 warnings.filterwarnings("ignore", message=".*conflict with protected namespace.*")
 # Suppress Pydantic 2.11+ deprecation warning about accessing model_fields on instances
 # This warning can accumulate during streaming and cause memory leaks
-warnings.filterwarnings("ignore", message=".*Accessing the.*attribute on the instance is deprecated.*")
-### INIT VARIABLES ######################
+warnings.filterwarnings(
+    "ignore", message=".*Accessing the.*attribute on the instance is deprecated.*"
+)
+### INIT VARIABLES #######################
 import threading
 import os
 from typing import (
@@ -32,7 +34,7 @@ from litellm.types.utils import (
     all_litellm_params as _litellm_completion_params,
     CredentialItem,
     PriorityReservationDict,
-)  # maintain backwards compatibility for root param
+)  # maintain backwards compatibility for root param.
 from litellm._logging import (
     set_verbose,
     _turn_on_debug,
@@ -349,8 +351,9 @@ add_function_to_prompt: bool = (
 client_session: Optional[httpx.Client] = None
 aclient_session: Optional[httpx.AsyncClient] = None
 model_fallbacks: Optional[List] = None  # Deprecated for 'litellm.fallbacks'
-model_cost_map_url: str = (
-    "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json"
+model_cost_map_url: str = os.getenv(
+    "LITELLM_MODEL_COST_MAP_URL",
+    "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json",
 )
 suppress_debug_info = False
 dynamodb_table_name: Optional[str] = None
@@ -372,6 +375,7 @@ max_ui_session_budget: Optional[float] = 10  # $10 USD budgets for UI Chat sessi
 internal_user_budget_duration: Optional[str] = None
 tag_budget_config: Optional[Dict[str, BudgetConfig]] = None
 max_end_user_budget: Optional[float] = None
+max_end_user_budget_id: Optional[str] = None
 disable_end_user_cost_tracking: Optional[bool] = None
 disable_end_user_cost_tracking_prometheus_only: Optional[bool] = None
 enable_end_user_cost_tracking_prometheus_only: Optional[bool] = None
@@ -384,7 +388,9 @@ disable_add_prefix_to_prompt: bool = (
 disable_copilot_system_to_assistant: bool = (
     False  # If false (default), converts all 'system' role messages to 'assistant' for GitHub Copilot compatibility. Set to true to disable this behavior.
 )
+public_mcp_servers: Optional[List[str]] = None
 public_model_groups: Optional[List[str]] = None
+public_agent_groups: Optional[List[str]] = None
 public_model_groups_links: Dict[str, str] = {}
 #### REQUEST PRIORITIZATION #######
 priority_reservation: Optional[Dict[str, Union[float, PriorityReservationDict]]] = None
@@ -418,6 +424,7 @@ fallbacks: Optional[List] = None
 context_window_fallbacks: Optional[List] = None
 content_policy_fallbacks: Optional[List] = None
 allowed_fails: int = 3
+allow_dynamic_callback_disabling: bool = True
 num_retries_per_request: Optional[int] = (
     None  # for the request overall (incl. fallbacks + model retries)
 )
@@ -492,6 +499,8 @@ vertex_deepseek_models: Set = set()
 vertex_ai_ai21_models: Set = set()
 vertex_mistral_models: Set = set()
 vertex_openai_models: Set = set()
+vertex_minimax_models: Set = set()
+vertex_moonshot_models: Set = set()
 ai21_models: Set = set()
 ai21_chat_models: Set = set()
 nlp_cloud_models: Set = set()
@@ -507,6 +516,7 @@ watsonx_models: Set = set()
 gemini_models: Set = set()
 xai_models: Set = set()
 deepseek_models: Set = set()
+runwayml_models: Set = set()
 azure_ai_models: Set = set()
 jina_ai_models: Set = set()
 voyage_models: Set = set()
@@ -553,6 +563,7 @@ wandb_models: Set = set(WANDB_MODELS)
 ovhcloud_models: Set = set()
 ovhcloud_embedding_models: Set = set()
 lemonade_models: Set = set()
+docker_model_runner_models: Set = set()
 
 
 def is_bedrock_pricing_only_model(key: str) -> bool:
@@ -652,6 +663,12 @@ def add_known_models():
         elif value.get("litellm_provider") == "vertex_ai-openai_models":
             key = key.replace("vertex_ai/", "")
             vertex_openai_models.add(key)
+        elif value.get("litellm_provider") == "vertex_ai-minimax_models":
+            key = key.replace("vertex_ai/", "")
+            vertex_minimax_models.add(key)
+        elif value.get("litellm_provider") == "vertex_ai-moonshot_models":
+            key = key.replace("vertex_ai/", "")
+            vertex_moonshot_models.add(key)
         elif value.get("litellm_provider") == "ai21":
             if value.get("mode") == "chat":
                 ai21_chat_models.add(key)
@@ -691,6 +708,8 @@ def add_known_models():
             fal_ai_models.add(key)
         elif value.get("litellm_provider") == "deepseek":
             deepseek_models.add(key)
+        elif value.get("litellm_provider") == "runwayml":
+            runwayml_models.add(key)
         elif value.get("litellm_provider") == "meta_llama":
             llama_models.add(key)
         elif value.get("litellm_provider") == "nscale":
@@ -779,6 +798,8 @@ def add_known_models():
             ovhcloud_embedding_models.add(key)
         elif value.get("litellm_provider") == "lemonade":
             lemonade_models.add(key)
+        elif value.get("litellm_provider") == "docker_model_runner":
+            docker_model_runner_models.add(key)
 
 
 add_known_models()
@@ -834,6 +855,7 @@ model_list = list(
     | deepinfra_models
     | perplexity_models
     | set(maritalk_models)
+    | runwayml_models
     | vertex_language_models
     | watsonx_models
     | gemini_models
@@ -881,6 +903,7 @@ model_list = list(
     | wandb_models
     | ovhcloud_models
     | lemonade_models
+    | docker_model_runner_models
     | set(clarifai_models)
 )
 
@@ -907,7 +930,9 @@ models_by_provider: dict = {
     | vertex_anthropic_models
     | vertex_vision_models
     | vertex_language_models
-    | vertex_deepseek_models,
+    | vertex_deepseek_models
+    | vertex_minimax_models
+    | vertex_moonshot_models,
     "ai21": ai21_models,
     "bedrock": bedrock_models | bedrock_converse_models,
     "petals": petals_models,
@@ -924,6 +949,7 @@ models_by_provider: dict = {
     "xai": xai_models,
     "fal_ai": fal_ai_models,
     "deepseek": deepseek_models,
+    "runwayml": runwayml_models,
     "mistral": mistral_chat_models,
     "azure_ai": azure_ai_models,
     "voyage": voyage_models,
@@ -1105,6 +1131,7 @@ from .llms.azure_ai.rerank.transformation import AzureAIRerankConfig
 from .llms.infinity.rerank.transformation import InfinityRerankConfig
 from .llms.jina_ai.rerank.transformation import JinaAIRerankConfig
 from .llms.deepinfra.rerank.transformation import DeepinfraRerankConfig
+from .llms.hosted_vllm.rerank.transformation import HostedVLLMRerankConfig
 from .llms.nvidia_nim.rerank.transformation import NvidiaNimRerankConfig
 from .llms.vertex_ai.rerank.transformation import VertexAIRerankConfig
 from .llms.clarifai.chat.transformation import ClarifaiConfig
@@ -1236,6 +1263,7 @@ from .llms.azure.responses.transformation import AzureOpenAIResponsesAPIConfig
 from .llms.azure.responses.o_series_transformation import (
     AzureOpenAIOSeriesResponsesAPIConfig,
 )
+from .llms.xai.responses.transformation import XAIResponsesAPIConfig
 from .llms.litellm_proxy.responses.transformation import (
     LiteLLMProxyResponsesAPIConfig,
 )
@@ -1319,10 +1347,14 @@ from .llms.watsonx.completion.transformation import IBMWatsonXAIConfig
 from .llms.watsonx.chat.transformation import IBMWatsonXChatConfig
 from .llms.watsonx.embed.transformation import IBMWatsonXEmbeddingConfig
 from .llms.github_copilot.chat.transformation import GithubCopilotConfig
+from .llms.github_copilot.responses.transformation import (
+    GithubCopilotResponsesAPIConfig,
+)
 from .llms.nebius.chat.transformation import NebiusConfig
 from .llms.wandb.chat.transformation import WandbConfig
 from .llms.dashscope.chat.transformation import DashScopeChatConfig
 from .llms.moonshot.chat.transformation import MoonshotChatConfig
+from .llms.docker_model_runner.chat.transformation import DockerModelRunnerChatConfig
 from .llms.v0.chat.transformation import V0ChatConfig
 from .llms.oci.chat.transformation import OCIChatConfig
 from .llms.morph.chat.transformation import MorphChatConfig
@@ -1333,6 +1365,7 @@ from .llms.ovhcloud.chat.transformation import OVHCloudChatConfig
 from .llms.ovhcloud.embedding.transformation import OVHCloudEmbeddingConfig
 from .llms.cometapi.embed.transformation import CometAPIEmbeddingConfig
 from .llms.lemonade.chat.transformation import LemonadeChatConfig
+from .llms.snowflake.embedding.transformation import SnowflakeEmbeddingConfig
 from .main import *  # type: ignore
 from .integrations import *
 from .llms.custom_httpx.async_client_cleanup import close_litellm_async_clients
@@ -1344,6 +1377,7 @@ from .exceptions import (
     NotFoundError,
     RateLimitError,
     ServiceUnavailableError,
+    BadGatewayError,
     OpenAIError,
     ContextWindowExceededError,
     ContentPolicyViolationError,
@@ -1376,6 +1410,20 @@ from .search.main import *
 from .realtime_api.main import _arealtime
 from .fine_tuning.main import *
 from .files.main import *
+from .vector_store_files.main import (
+    acreate as avector_store_file_create,
+    adelete as avector_store_file_delete,
+    alist as avector_store_file_list,
+    aretrieve as avector_store_file_retrieve,
+    aretrieve_content as avector_store_file_content,
+    aupdate as avector_store_file_update,
+    create as vector_store_file_create,
+    delete as vector_store_file_delete,
+    list as vector_store_file_list,
+    retrieve as vector_store_file_retrieve,
+    retrieve_content as vector_store_file_content,
+    update as vector_store_file_update,
+)
 from .scheduler import *
 from .cost_calculator import response_cost_calculator, cost_per_token
 
