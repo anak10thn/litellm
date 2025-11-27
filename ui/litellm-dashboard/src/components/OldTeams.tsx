@@ -1,7 +1,7 @@
 import AvailableTeamsPanel from "@/components/team/available_teams";
 import TeamInfoView from "@/components/team/team_info";
 import TeamSSOSettings from "@/components/TeamSSOSettings";
-import { isAdminRole } from "@/utils/roles";
+import { isProxyAdminRole } from "@/utils/roles";
 import { InfoCircleOutlined } from "@ant-design/icons";
 import { ChevronDownIcon, ChevronRightIcon, PencilAltIcon, RefreshIcon, TrashIcon } from "@heroicons/react/outline";
 import {
@@ -331,11 +331,10 @@ const Teams: React.FC<TeamProps> = ({
     try {
       setIsTeamDeleting(true);
       await teamDeleteCall(accessToken, teamToDelete.team_id);
-      // Successfully completed the deletion. Update the state to trigger a rerender.
       await fetchTeams(accessToken, userID, userRole, currentOrg, setTeams);
+      NotificationsManager.success("Team deleted successfully");
     } catch (error) {
-      console.error("Error deleting the team:", error);
-      // Handle any error situations, such as displaying an error message to the user.
+      NotificationsManager.fromBackend("Error deleting the team: " + error);
     } finally {
       setIsTeamDeleting(false);
       setIsDeleteModalOpen(false);
@@ -344,7 +343,6 @@ const Teams: React.FC<TeamProps> = ({
   };
 
   const cancelDelete = () => {
-    // Close the confirmation modal and reset the teamToDelete
     setIsDeleteModalOpen(false);
     setTeamToDelete(null);
   };
@@ -611,7 +609,7 @@ const Teams: React.FC<TeamProps> = ({
                 <div className="flex">
                   <Tab>Your Teams</Tab>
                   <Tab>Available Teams</Tab>
-                  {isAdminRole(userRole || "") && <Tab>Default Team Settings</Tab>}
+                  {isProxyAdminRole(userRole || "") && <Tab>Default Team Settings</Tab>}
                 </div>
                 <div className="flex items-center space-x-2">
                   {lastRefreshed && <Text>Last Refreshed: {lastRefreshed}</Text>}
@@ -1000,7 +998,7 @@ const Teams: React.FC<TeamProps> = ({
                 <TabPanel>
                   <AvailableTeamsPanel accessToken={accessToken} userID={userID} />
                 </TabPanel>
-                {isAdminRole(userRole || "") && (
+                {isProxyAdminRole(userRole || "") && (
                   <TabPanel>
                     <TeamSSOSettings accessToken={accessToken} userID={userID || ""} userRole={userRole || ""} />
                   </TabPanel>
@@ -1141,11 +1139,22 @@ const Teams: React.FC<TeamProps> = ({
                         </Tooltip>
                       </span>
                     }
+                    rules={[
+                      {
+                        required: true,
+                        message: "Please select at least one model",
+                      },
+                    ]}
                     name="models"
                   >
                     <Select2 mode="multiple" placeholder="Select models" style={{ width: "100%" }}>
-                      <Select2.Option key="all-proxy-models" value="all-proxy-models">
-                        All Proxy Models
+                      {(isProxyAdminRole(userRole || "") || userModels.includes("all-proxy-models")) && (
+                        <Select2.Option key="all-proxy-models" value="all-proxy-models">
+                          All Proxy Models
+                        </Select2.Option>
+                      )}
+                      <Select2.Option key="no-default-models" value="no-default-models">
+                        No Default Models
                       </Select2.Option>
                       {modelsToPick.map((model) => (
                         <Select2.Option key={model} value={model}>
@@ -1276,10 +1285,14 @@ const Teams: React.FC<TeamProps> = ({
                         valuePropName="checked"
                         help="Bypass global guardrails for this team"
                       >
-                        <Switch 
+                        <Switch
                           disabled={!premiumUser}
-                          checkedChildren={premiumUser ? "Yes" : "Premium feature - Upgrade to disable global guardrails by team"}
-                          unCheckedChildren={premiumUser ? "No" : "Premium feature - Upgrade to disable global guardrails by team"}
+                          checkedChildren={
+                            premiumUser ? "Yes" : "Premium feature - Upgrade to disable global guardrails by team"
+                          }
+                          unCheckedChildren={
+                            premiumUser ? "No" : "Premium feature - Upgrade to disable global guardrails by team"
+                          }
                         />
                       </Form.Item>
                       <Form.Item
