@@ -237,6 +237,7 @@ def init_bedrock_client(
             "sts",
             aws_access_key_id=aws_access_key_id,
             aws_secret_access_key=aws_secret_access_key,
+            verify=ssl_verify
         )
 
         sts_response = sts_client.assume_role(
@@ -402,6 +403,9 @@ class BedrockModelInfo(BaseLLMModelInfo):
         if model.startswith("invoke/"):
             model = model.split("/", 1)[1]
 
+        if model.startswith("openai/"):
+            model = model.split("/", 1)[1]
+
         return model
 
     @staticmethod
@@ -445,12 +449,12 @@ class BedrockModelInfo(BaseLLMModelInfo):
     @staticmethod
     def get_bedrock_route(
         model: str,
-    ) -> Literal["converse", "invoke", "converse_like", "agent", "agentcore", "async_invoke"]:
+    ) -> Literal["converse", "invoke", "converse_like", "agent", "agentcore", "async_invoke", "openai"]:
         """
         Get the bedrock route for the given model.
         """
         route_mappings: Dict[
-            str, Literal["invoke", "converse_like", "converse", "agent", "agentcore", "async_invoke"]
+            str, Literal["invoke", "converse_like", "converse", "agent", "agentcore", "async_invoke", "openai"]
         ] = {
             "invoke/": "invoke",
             "converse_like/": "converse_like",
@@ -458,6 +462,7 @@ class BedrockModelInfo(BaseLLMModelInfo):
             "agent/": "agent",
             "agentcore/": "agentcore",
             "async_invoke/": "async_invoke",
+            "openai/": "openai",
         }
 
         # Check explicit routes first
@@ -517,6 +522,14 @@ class BedrockModelInfo(BaseLLMModelInfo):
         return "async_invoke/" in model
 
     @staticmethod
+    def _explicit_openai_route(model: str) -> bool:
+        """
+        Check if the model is an explicit openai route.
+        Used for Bedrock imported models that use OpenAI Chat Completions format.
+        """
+        return "openai/" in model
+
+    @staticmethod
     def get_bedrock_provider_config_for_messages_api(
         model: str,
     ) -> Optional[BaseAnthropicMessagesConfig]:
@@ -565,6 +578,8 @@ def get_bedrock_chat_config(model: str):
     # Handle explicit routes first
     if bedrock_route == "converse" or bedrock_route == "converse_like":
         return litellm.AmazonConverseConfig()
+    elif bedrock_route == "openai":
+        return litellm.AmazonBedrockOpenAIConfig()
     elif bedrock_route == "agent":
         from litellm.llms.bedrock.chat.invoke_agent.transformation import (
             AmazonInvokeAgentConfig,

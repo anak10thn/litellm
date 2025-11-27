@@ -4,8 +4,10 @@ import warnings
 warnings.filterwarnings("ignore", message=".*conflict with protected namespace.*")
 # Suppress Pydantic 2.11+ deprecation warning about accessing model_fields on instances
 # This warning can accumulate during streaming and cause memory leaks
-warnings.filterwarnings("ignore", message=".*Accessing the.*attribute on the instance is deprecated.*")
-### INIT VARIABLES ######################
+warnings.filterwarnings(
+    "ignore", message=".*Accessing the.*attribute on the instance is deprecated.*"
+)
+### INIT VARIABLES #######################
 import threading
 import os
 from typing import (
@@ -18,6 +20,9 @@ from typing import (
     Literal,
     get_args,
     TYPE_CHECKING,
+    Tuple,
+    overload,
+    Type,
 )
 from litellm.types.integrations.datadog_llm_obs import DatadogLLMObsInitParams
 from litellm.types.integrations.datadog import DatadogInitParams
@@ -32,7 +37,7 @@ from litellm.types.utils import (
     all_litellm_params as _litellm_completion_params,
     CredentialItem,
     PriorityReservationDict,
-)  # maintain backwards compatibility for root param
+)  # maintain backwards compatibility for root param.
 from litellm._logging import (
     set_verbose,
     _turn_on_debug,
@@ -172,6 +177,7 @@ _known_custom_logger_compatible_callbacks: List = list(
 callbacks: List[
     Union[Callable, _custom_logger_compatible_callbacks_literal, CustomLogger]
 ] = []
+callback_settings: Dict[str, Dict[str, Any]] = {}
 initialized_langfuse_clients: int = 0
 langfuse_default_tags: Optional[List[str]] = None
 langsmith_batch_size: Optional[int] = None
@@ -349,8 +355,9 @@ add_function_to_prompt: bool = (
 client_session: Optional[httpx.Client] = None
 aclient_session: Optional[httpx.AsyncClient] = None
 model_fallbacks: Optional[List] = None  # Deprecated for 'litellm.fallbacks'
-model_cost_map_url: str = (
-    "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json"
+model_cost_map_url: str = os.getenv(
+    "LITELLM_MODEL_COST_MAP_URL",
+    "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json",
 )
 suppress_debug_info = False
 dynamodb_table_name: Optional[str] = None
@@ -372,6 +379,7 @@ max_ui_session_budget: Optional[float] = 10  # $10 USD budgets for UI Chat sessi
 internal_user_budget_duration: Optional[str] = None
 tag_budget_config: Optional[Dict[str, BudgetConfig]] = None
 max_end_user_budget: Optional[float] = None
+max_end_user_budget_id: Optional[str] = None
 disable_end_user_cost_tracking: Optional[bool] = None
 disable_end_user_cost_tracking_prometheus_only: Optional[bool] = None
 enable_end_user_cost_tracking_prometheus_only: Optional[bool] = None
@@ -384,7 +392,9 @@ disable_add_prefix_to_prompt: bool = (
 disable_copilot_system_to_assistant: bool = (
     False  # If false (default), converts all 'system' role messages to 'assistant' for GitHub Copilot compatibility. Set to true to disable this behavior.
 )
+public_mcp_servers: Optional[List[str]] = None
 public_model_groups: Optional[List[str]] = None
+public_agent_groups: Optional[List[str]] = None
 public_model_groups_links: Dict[str, str] = {}
 #### REQUEST PRIORITIZATION #######
 priority_reservation: Optional[Dict[str, Union[float, PriorityReservationDict]]] = None
@@ -418,6 +428,7 @@ fallbacks: Optional[List] = None
 context_window_fallbacks: Optional[List] = None
 content_policy_fallbacks: Optional[List] = None
 allowed_fails: int = 3
+allow_dynamic_callback_disabling: bool = True
 num_retries_per_request: Optional[int] = (
     None  # for the request overall (incl. fallbacks + model retries)
 )
@@ -492,6 +503,8 @@ vertex_deepseek_models: Set = set()
 vertex_ai_ai21_models: Set = set()
 vertex_mistral_models: Set = set()
 vertex_openai_models: Set = set()
+vertex_minimax_models: Set = set()
+vertex_moonshot_models: Set = set()
 ai21_models: Set = set()
 ai21_chat_models: Set = set()
 nlp_cloud_models: Set = set()
@@ -507,6 +520,7 @@ watsonx_models: Set = set()
 gemini_models: Set = set()
 xai_models: Set = set()
 deepseek_models: Set = set()
+runwayml_models: Set = set()
 azure_ai_models: Set = set()
 jina_ai_models: Set = set()
 voyage_models: Set = set()
@@ -520,6 +534,7 @@ featherless_ai_models: Set = set()
 palm_models: Set = set()
 groq_models: Set = set()
 azure_models: Set = set()
+azure_anthropic_models: Set = set()
 azure_text_models: Set = set()
 anyscale_models: Set = set()
 cerebras_models: Set = set()
@@ -553,6 +568,7 @@ wandb_models: Set = set(WANDB_MODELS)
 ovhcloud_models: Set = set()
 ovhcloud_embedding_models: Set = set()
 lemonade_models: Set = set()
+docker_model_runner_models: Set = set()
 
 
 def is_bedrock_pricing_only_model(key: str) -> bool:
@@ -652,6 +668,12 @@ def add_known_models():
         elif value.get("litellm_provider") == "vertex_ai-openai_models":
             key = key.replace("vertex_ai/", "")
             vertex_openai_models.add(key)
+        elif value.get("litellm_provider") == "vertex_ai-minimax_models":
+            key = key.replace("vertex_ai/", "")
+            vertex_minimax_models.add(key)
+        elif value.get("litellm_provider") == "vertex_ai-moonshot_models":
+            key = key.replace("vertex_ai/", "")
+            vertex_moonshot_models.add(key)
         elif value.get("litellm_provider") == "ai21":
             if value.get("mode") == "chat":
                 ai21_chat_models.add(key)
@@ -691,6 +713,8 @@ def add_known_models():
             fal_ai_models.add(key)
         elif value.get("litellm_provider") == "deepseek":
             deepseek_models.add(key)
+        elif value.get("litellm_provider") == "runwayml":
+            runwayml_models.add(key)
         elif value.get("litellm_provider") == "meta_llama":
             llama_models.add(key)
         elif value.get("litellm_provider") == "nscale":
@@ -715,6 +739,8 @@ def add_known_models():
             groq_models.add(key)
         elif value.get("litellm_provider") == "azure":
             azure_models.add(key)
+        elif value.get("litellm_provider") == "azure_anthropic":
+            azure_anthropic_models.add(key)
         elif value.get("litellm_provider") == "anyscale":
             anyscale_models.add(key)
         elif value.get("litellm_provider") == "cerebras":
@@ -779,6 +805,8 @@ def add_known_models():
             ovhcloud_embedding_models.add(key)
         elif value.get("litellm_provider") == "lemonade":
             lemonade_models.add(key)
+        elif value.get("litellm_provider") == "docker_model_runner":
+            docker_model_runner_models.add(key)
 
 
 add_known_models()
@@ -834,6 +862,7 @@ model_list = list(
     | deepinfra_models
     | perplexity_models
     | set(maritalk_models)
+    | runwayml_models
     | vertex_language_models
     | watsonx_models
     | gemini_models
@@ -851,6 +880,7 @@ model_list = list(
     | palm_models
     | groq_models
     | azure_models
+    | azure_anthropic_models
     | anyscale_models
     | cerebras_models
     | galadriel_models
@@ -881,6 +911,7 @@ model_list = list(
     | wandb_models
     | ovhcloud_models
     | lemonade_models
+    | docker_model_runner_models
     | set(clarifai_models)
 )
 
@@ -907,7 +938,9 @@ models_by_provider: dict = {
     | vertex_anthropic_models
     | vertex_vision_models
     | vertex_language_models
-    | vertex_deepseek_models,
+    | vertex_deepseek_models
+    | vertex_minimax_models
+    | vertex_moonshot_models,
     "ai21": ai21_models,
     "bedrock": bedrock_models | bedrock_converse_models,
     "petals": petals_models,
@@ -924,6 +957,7 @@ models_by_provider: dict = {
     "xai": xai_models,
     "fal_ai": fal_ai_models,
     "deepseek": deepseek_models,
+    "runwayml": runwayml_models,
     "mistral": mistral_chat_models,
     "azure_ai": azure_ai_models,
     "voyage": voyage_models,
@@ -936,6 +970,7 @@ models_by_provider: dict = {
     "palm": palm_models,
     "groq": groq_models,
     "azure": azure_models | azure_text_models,
+    "azure_anthropic": azure_anthropic_models,
     "azure_text": azure_text_models,
     "anyscale": anyscale_models,
     "cerebras": cerebras_models,
@@ -1013,8 +1048,6 @@ openai_image_generation_models = ["dall-e-2", "dall-e-3"]
 openai_video_generation_models = ["sora-2"]
 
 from .timeout import timeout
-from .cost_calculator import completion_cost
-from litellm.litellm_core_utils.litellm_logging import Logging, modify_integration
 from litellm.litellm_core_utils.get_llm_provider_logic import get_llm_provider
 from litellm.litellm_core_utils.core_helpers import remove_index_from_tool_calls
 from litellm.litellm_core_utils.token_counter import get_modified_max_tokens
@@ -1087,6 +1120,7 @@ from .llms.openrouter.chat.transformation import OpenrouterConfig
 from .llms.datarobot.chat.transformation import DataRobotConfig
 from .llms.anthropic.chat.transformation import AnthropicConfig
 from .llms.anthropic.common_utils import AnthropicModelInfo
+from .llms.azure.anthropic.transformation import AzureAnthropicConfig
 from .llms.groq.stt.transformation import GroqSTTConfig
 from .llms.anthropic.completion.transformation import AnthropicTextConfig
 from .llms.triton.completion.transformation import TritonConfig
@@ -1105,6 +1139,7 @@ from .llms.azure_ai.rerank.transformation import AzureAIRerankConfig
 from .llms.infinity.rerank.transformation import InfinityRerankConfig
 from .llms.jina_ai.rerank.transformation import JinaAIRerankConfig
 from .llms.deepinfra.rerank.transformation import DeepinfraRerankConfig
+from .llms.hosted_vllm.rerank.transformation import HostedVLLMRerankConfig
 from .llms.nvidia_nim.rerank.transformation import NvidiaNimRerankConfig
 from .llms.vertex_ai.rerank.transformation import VertexAIRerankConfig
 from .llms.clarifai.chat.transformation import ClarifaiConfig
@@ -1197,6 +1232,9 @@ from .llms.bedrock.chat.invoke_transformations.amazon_titan_transformation impor
 from .llms.bedrock.chat.invoke_transformations.base_invoke_transformation import (
     AmazonInvokeConfig,
 )
+from .llms.bedrock.chat.invoke_transformations.amazon_openai_transformation import (
+    AmazonBedrockOpenAIConfig,
+)
 
 from .llms.bedrock.image.amazon_stability1_transformation import AmazonStabilityConfig
 from .llms.bedrock.image.amazon_stability3_transformation import AmazonStability3Config
@@ -1236,6 +1274,7 @@ from .llms.azure.responses.transformation import AzureOpenAIResponsesAPIConfig
 from .llms.azure.responses.o_series_transformation import (
     AzureOpenAIOSeriesResponsesAPIConfig,
 )
+from .llms.xai.responses.transformation import XAIResponsesAPIConfig
 from .llms.litellm_proxy.responses.transformation import (
     LiteLLMProxyResponsesAPIConfig,
 )
@@ -1243,6 +1282,8 @@ from .llms.openai.chat.o_series_transformation import (
     OpenAIOSeriesConfig as OpenAIO1Config,  # maintain backwards compatibility
     OpenAIOSeriesConfig,
 )
+from .llms.anthropic.skills.transformation import AnthropicSkillsConfig
+from .llms.base_llm.skills.transformation import BaseSkillsAPIConfig
 
 from .llms.gradient_ai.chat.transformation import GradientAIConfig
 
@@ -1318,11 +1359,18 @@ from .llms.azure.chat.o_series_transformation import AzureOpenAIO1Config
 from .llms.watsonx.completion.transformation import IBMWatsonXAIConfig
 from .llms.watsonx.chat.transformation import IBMWatsonXChatConfig
 from .llms.watsonx.embed.transformation import IBMWatsonXEmbeddingConfig
+from .llms.watsonx.audio_transcription.transformation import (
+    IBMWatsonXAudioTranscriptionConfig,
+)
 from .llms.github_copilot.chat.transformation import GithubCopilotConfig
+from .llms.github_copilot.responses.transformation import (
+    GithubCopilotResponsesAPIConfig,
+)
 from .llms.nebius.chat.transformation import NebiusConfig
 from .llms.wandb.chat.transformation import WandbConfig
 from .llms.dashscope.chat.transformation import DashScopeChatConfig
 from .llms.moonshot.chat.transformation import MoonshotChatConfig
+from .llms.docker_model_runner.chat.transformation import DockerModelRunnerChatConfig
 from .llms.v0.chat.transformation import V0ChatConfig
 from .llms.oci.chat.transformation import OCIChatConfig
 from .llms.morph.chat.transformation import MorphChatConfig
@@ -1333,7 +1381,20 @@ from .llms.ovhcloud.chat.transformation import OVHCloudChatConfig
 from .llms.ovhcloud.embedding.transformation import OVHCloudEmbeddingConfig
 from .llms.cometapi.embed.transformation import CometAPIEmbeddingConfig
 from .llms.lemonade.chat.transformation import LemonadeChatConfig
+from .llms.snowflake.embedding.transformation import SnowflakeEmbeddingConfig
 from .main import *  # type: ignore
+
+# Skills API
+from .skills.main import (
+    create_skill,
+    acreate_skill,
+    list_skills,
+    alist_skills,
+    get_skill,
+    aget_skill,
+    delete_skill,
+    adelete_skill,
+)
 from .integrations import *
 from .llms.custom_httpx.async_client_cleanup import close_litellm_async_clients
 from .exceptions import (
@@ -1344,6 +1405,7 @@ from .exceptions import (
     NotFoundError,
     RateLimitError,
     ServiceUnavailableError,
+    BadGatewayError,
     OpenAIError,
     ContextWindowExceededError,
     ContentPolicyViolationError,
@@ -1370,14 +1432,38 @@ from .batch_completion.main import *  # type: ignore
 from .rerank_api.main import *
 from .llms.anthropic.experimental_pass_through.messages.handler import *
 from .responses.main import *
+from .skills.main import (
+    create_skill,
+    acreate_skill,
+    list_skills,
+    alist_skills,
+    get_skill,
+    aget_skill,
+    delete_skill,
+    adelete_skill,
+)
 from .containers.main import *
 from .ocr.main import *
+from .rag.main import *
 from .search.main import *
 from .realtime_api.main import _arealtime
 from .fine_tuning.main import *
 from .files.main import *
+from .vector_store_files.main import (
+    acreate as avector_store_file_create,
+    adelete as avector_store_file_delete,
+    alist as avector_store_file_list,
+    aretrieve as avector_store_file_retrieve,
+    aretrieve_content as avector_store_file_content,
+    aupdate as avector_store_file_update,
+    create as vector_store_file_create,
+    delete as vector_store_file_delete,
+    list as vector_store_file_list,
+    retrieve as vector_store_file_retrieve,
+    retrieve_content as vector_store_file_content,
+    update as vector_store_file_update,
+)
 from .scheduler import *
-from .cost_calculator import response_cost_calculator, cost_per_token
 
 ### ADAPTERS ###
 from .types.adapter import AdapterItem
@@ -1393,6 +1479,9 @@ from .vector_stores.vector_store_registry import (
 
 vector_store_registry: Optional[VectorStoreRegistry] = None
 vector_store_index_registry: Optional[VectorStoreIndexRegistry] = None
+
+### RAG ###
+from . import rag
 
 ### CUSTOM LLMs ###
 from .types.llms.custom_llm import CustomLLMItem
@@ -1432,3 +1521,70 @@ def set_global_gitlab_config(config: Dict[str, Any]) -> None:
     """Set global BitBucket configuration for prompt management."""
     global global_gitlab_config
     global_gitlab_config = config
+
+
+# Lazy loading system for heavy modules to reduce initial import time and memory usage
+def _lazy_import_cost_calculator(name: str) -> Any:
+    """Lazy import for cost_calculator functions."""
+    from .cost_calculator import (
+        completion_cost as _completion_cost,
+        cost_per_token as _cost_per_token,
+        response_cost_calculator as _response_cost_calculator,
+    )
+    
+    _cost_functions = {
+        "completion_cost": _completion_cost,
+        "cost_per_token": _cost_per_token,
+        "response_cost_calculator": _response_cost_calculator,
+    }
+    
+    func = _cost_functions[name]
+    globals()[name] = func
+    return func
+
+
+def _lazy_import_litellm_logging(name: str) -> Any:
+    """Lazy import for litellm_logging module."""
+    try:
+        from litellm.litellm_core_utils.litellm_logging import (
+            Logging as _Logging,
+            modify_integration as _modify_integration,
+        )
+        
+        _logging_objects = {
+            "Logging": _Logging,
+            "modify_integration": _modify_integration,
+        }
+        
+        obj = _logging_objects[name]
+        globals()[name] = obj
+        return obj
+    except Exception as e:
+        raise AttributeError(
+            f"module {__name__!r} has no attribute {name!r}. "
+            f"Lazy import failed: {e}"
+        ) from e
+
+
+_LAZY_LOAD_REGISTRY: Dict[str, Callable[[str], Any]] = {
+    "completion_cost": _lazy_import_cost_calculator,
+    "cost_per_token": _lazy_import_cost_calculator,
+    "response_cost_calculator": _lazy_import_cost_calculator,
+    "Logging": _lazy_import_litellm_logging,
+    "modify_integration": _lazy_import_litellm_logging,
+}
+
+
+if TYPE_CHECKING:
+    cost_per_token: Callable[..., Tuple[float, float]]
+    completion_cost: Callable[..., float]
+    response_cost_calculator: Any
+    modify_integration: Any
+
+
+def __getattr__(name: str) -> Any:
+    """Lazy import handler for cost_calculator and litellm_logging functions."""
+    if name in _LAZY_LOAD_REGISTRY:
+        return _LAZY_LOAD_REGISTRY[name](name)
+    
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
