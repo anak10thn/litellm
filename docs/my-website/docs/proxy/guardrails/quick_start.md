@@ -45,6 +45,20 @@ guardrails:
           description: "Score between 0-1 indicating content toxicity level"
         - name: "pii_detection"
           type: "boolean"
+
+# Example Presidio guardrail config with entity actions + confidence score thresholds
+  - guardrail_name: "presidio-pii"
+    litellm_params:
+      guardrail: presidio
+      mode: "pre_call"
+      presidio_language: "en"
+      pii_entities_config:
+        CREDIT_CARD: "MASK"
+        EMAIL_ADDRESS: "MASK"
+        US_SSN: "MASK"
+      presidio_score_thresholds:  # minimum confidence scores for keeping detections
+        CREDIT_CARD: 0.8
+        EMAIL_ADDRESS: 0.6
 ```
 
 
@@ -197,13 +211,7 @@ curl -i http://localhost:4000/v1/chat/completions \
 
 Follow this simple workflow to implement and tune guardrails:
 
-### 1. ✨ View Available Guardrails
-
-:::info
-
-✨ This is an Enterprise only feature [Get a free trial](https://www.litellm.ai/enterprise#trial)
-
-:::
+### 1. View Available Guardrails
 
 First, check what guardrails are available and their parameters:
 
@@ -547,7 +555,7 @@ guardrails:
 curl -X POST 'http://0.0.0.0:4000/team/update' \
 -H 'Authorization: Bearer sk-1234' \
 -H 'Content-Type: application/json' \
--D '{
+-d '{
     "team_id": "4198d93c-d375-4c83-8d5a-71e7c5473e50",
     "metadata": {"guardrails": {"modify_guardrails": false}}
 }'
