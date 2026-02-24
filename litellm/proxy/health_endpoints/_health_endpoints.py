@@ -4,7 +4,7 @@ import os
 import time
 import traceback
 from datetime import datetime, timedelta
-from typing import Dict, Literal, Optional, Union
+from typing import Any, Dict, Literal, Optional, Union, cast
 
 import fastapi
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
@@ -16,6 +16,7 @@ from litellm.llms.custom_httpx.http_handler import AsyncHTTPHandler
 from litellm.proxy._types import (
     AlertType,
     CallInfo,
+    EnterpriseLicenseData,
     Litellm_EntityType,
     ProxyErrorTypes,
     ProxyException,
@@ -31,45 +32,108 @@ from litellm.proxy.health_check import (
     run_with_timeout,
 )
 from litellm.secret_managers.main import get_secret
+from litellm.litellm_core_utils.custom_logger_registry import CustomLoggerRegistry
 
 #### Health ENDPOINTS ####
 
 
 def _resolve_os_environ_variables(params: dict) -> dict:
     """
-    Resolve os.environ/ environment variables in litellm_params.
-    
-    This function recursively processes dictionary values that start with "os.environ/"
-    by replacing them with the actual environment variable values.
-    
-    Args:
-        params: Dictionary containing litellm_params that may have os.environ/ values
-        
-    Returns:
-        Dictionary with os.environ/ values resolved to actual environment variable values
+    Resolve ``os.environ/`` environment variables in ``litellm_params``.
+
+    This walks the input dict/list structure iteratively (no Python recursion) to
+    avoid unbounded recursion / stack overflows on deeply nested inputs.
     """
     if not isinstance(params, dict):
         return params
+
+    # Use an explicit stack to avoid recursion and handle nested dicts/lists.
+    # We also keep a `seen` set to guard against accidental cycles.
+    resolved_root: dict = {}
+    stack: list[tuple[object, object]] = [(params, resolved_root)]
+    seen: set[int] = {id(params)}
+
+    while stack:
+        src, dst = stack.pop()
+
+        if isinstance(src, dict) and isinstance(dst, dict):
+            for key, value in src.items():
+                # Direct string replacement for os.environ/ references
+                if isinstance(value, str) and value.startswith("os.environ/"):
+                    dst[key] = get_secret(value)
+                elif isinstance(value, dict):
+                    if id(value) in seen:
+                        # Cycle detected – keep a shallow copy reference to prevent infinite loops
+                        dst[key] = {}
+                        continue
+                    seen.add(id(value))
+                    new_dict: dict = {}
+                    dst[key] = new_dict
+                    stack.append((value, new_dict))
+                elif isinstance(value, list):
+                    if id(value) in seen:
+                        dst[key] = []
+                        continue
+                    seen.add(id(value))
+                    new_list: list = []
+                    dst[key] = new_list
+                    stack.append((value, new_list))
+                else:
+                    dst[key] = value
+
+        elif isinstance(src, list) and isinstance(dst, list):
+            for item in src:
+                if isinstance(item, str) and item.startswith("os.environ/"):
+                    dst.append(get_secret(item))
+                elif isinstance(item, dict):
+                    if id(item) in seen:
+                        dst.append({})
+                        continue
+                    seen.add(id(item))
+                    new_dict = {}
+                    dst.append(new_dict)
+                    stack.append((item, new_dict))
+                elif isinstance(item, list):
+                    if id(item) in seen:
+                        dst.append([])
+                        continue
+                    seen.add(id(item))
+                    new_list = []
+                    dst.append(new_list)
+                    stack.append((item, new_list))
+                else:
+                    dst.append(item)
+
+    return resolved_root
+
+
+def get_callback_identifier(callback):
+    """
+    Get the callback identifier string, handling both strings and objects.
     
-    resolved_params = {}
-    for key, value in params.items():
-        if isinstance(value, str) and value.startswith("os.environ/"):
-            # Resolve the environment variable
-            resolved_value = get_secret(value)
-            resolved_params[key] = resolved_value
-        elif isinstance(value, dict):
-            # Recursively resolve nested dictionaries
-            resolved_params[key] = _resolve_os_environ_variables(value)
-        elif isinstance(value, list):
-            # Handle lists that might contain dictionaries with os.environ/ values
-            resolved_params[key] = [
-                _resolve_os_environ_variables(item) if isinstance(item, dict) else item
-                for item in value
-            ]
-        else:
-            resolved_params[key] = value
+    This function extracts a string identifier from a callback, which can be:
+    - A string (returned as-is)
+    - An object with a callback_name attribute
+    - An object registered in CustomLoggerRegistry
+    - Falls back to callback_name() helper function
     
-    return resolved_params
+    Args:
+        callback: The callback to identify (can be str or object)
+        
+    Returns:
+        str: The callback identifier string
+    """
+    if isinstance(callback, str):
+        return callback
+    if hasattr(callback, 'callback_name') and callback.callback_name:
+        return callback.callback_name
+    if hasattr(callback, '__class__'):
+        callback_strs = CustomLoggerRegistry.get_all_callback_strs_from_class_type(callback.__class__)
+        if hasattr(callback, 'callback_name') and callback.callback_name in callback_strs:
+            return callback.callback_name
+        if callback_strs:
+            return callback_strs[0]
+    return callback_name(callback)
 
 
 router = APIRouter()
@@ -84,6 +148,7 @@ services = Union[
         "email",
         "braintrust",
         "datadog",
+        "datadog_llm_observability",
         "generic_api",
         "arize",
         "sqs"
@@ -156,6 +221,7 @@ async def health_services_endpoint(  # noqa: PLR0915
             "custom_callback_api",
             "langsmith",
             "datadog",
+            "datadog_llm_observability",
             "generic_api",
             "arize",
             "sqs"
@@ -167,11 +233,24 @@ async def health_services_endpoint(  # noqa: PLR0915
                 },
             )
 
+        service_in_success_callbacks = False
+        if service in litellm.success_callback:
+            service_in_success_callbacks = True
+        else:
+            for cb in litellm.success_callback:
+                if hasattr(cb, 'callback_name') and cb.callback_name == service:
+                    service_in_success_callbacks = True
+                    break
+                cb_id = get_callback_identifier(cb)
+                if cb_id == service:
+                    service_in_success_callbacks = True
+                    break
+        
         if (
             service == "openmeter"
             or service == "braintrust"
             or service == "generic_api"
-            or (service in litellm.success_callback and service != "langfuse")
+            or (service_in_success_callbacks and service != "langfuse")
         ):
             _ = await litellm.acompletion(
                 model="openai/litellm-mock-response-model",
@@ -925,6 +1004,91 @@ async def shared_health_check_status_endpoint(
                 "error": f"Failed to retrieve shared health check status: {str(e)}"
             },
         )
+
+
+def _read_license_data() -> Optional[Dict[str, Any]]:
+    from litellm.proxy.proxy_server import (
+        _license_check,
+        premium_user_data,
+    )
+
+    license_data: Optional[EnterpriseLicenseData] = (
+        premium_user_data or _license_check.airgapped_license_data
+    )
+
+    if (
+        license_data is None
+        and getattr(_license_check, "license_str", None)
+        and getattr(_license_check, "public_key", None)
+    ):
+        try:
+            verification_result = _license_check.verify_license_without_api_request(
+                public_key=_license_check.public_key,
+                license_key=_license_check.license_str,
+            )
+            if verification_result is True:
+                license_data = _license_check.airgapped_license_data
+        except Exception:
+            pass
+
+    if license_data is None:
+        return None
+    return cast(Dict[str, Any], license_data)
+
+
+def _read_allowed_features(license_data: Dict[str, Any]) -> list:
+    raw_allowed_features = license_data.get("allowed_features")
+    if isinstance(raw_allowed_features, list):
+        return list(raw_allowed_features)
+    if raw_allowed_features is None:
+        return []
+    return [raw_allowed_features]
+
+
+@router.get(
+    "/health/license",
+    tags=["health"],
+    dependencies=[Depends(user_api_key_auth)],
+)
+async def health_license_endpoint(
+    user_api_key_dict: UserAPIKeyAuth = Depends(user_api_key_auth),
+):
+    """Return metadata about the configured LiteLLM license without exposing the key."""
+    from litellm.proxy.proxy_server import (
+        _license_check,
+        premium_user,
+    )
+
+    license_data = _read_license_data()
+    has_license = bool(getattr(_license_check, "license_str", None))
+    license_type = "enterprise" if premium_user else "community"
+
+    if license_data is None:
+        return {
+            "has_license": has_license,
+            "license_type": license_type,
+            "expiration_date": None,
+            "allowed_features": [],
+            "limits": {
+                "max_users": None,
+                "max_teams": None,
+            },
+        }
+
+    expiration_date = license_data.get("expiration_date")
+    max_users = license_data.get("max_users")
+    max_teams = license_data.get("max_teams")
+
+    return {
+        "has_license": has_license,
+        "license_type": license_type,
+        "expiration_date": expiration_date,
+        "allowed_features": _read_allowed_features(license_data),
+        "limits": {
+            "max_users": max_users,
+            "max_teams": max_teams,
+        },
+    }
 
 
 db_health_cache = {"status": "unknown", "last_updated": datetime.now()}

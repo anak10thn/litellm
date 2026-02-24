@@ -15,6 +15,7 @@ authors:
     title: "CTO, LiteLLM"
     url: https://www.linkedin.com/in/reffajnaahsi/
     image_url: https://pbs.twimg.com/profile_images/1613813310264340481/lz54oEiB_400x400.jpg
+description: "Guide to using Gemini 3 Flash on LiteLLM Proxy and SDK with day 0 support."
 tags: [gemini, day 0 support, llms]
 hide_table_of_contents: false
 ---
@@ -26,6 +27,10 @@ import TabItem from '@theme/TabItem';
 # Gemini 3 Flash Day 0 Support 
 
 LiteLLM now supports `gemini-3-flash-preview` and all the new API changes along with it.
+
+:::note
+If you only want cost tracking, you need no change in your current Litellm version. But if you want the support for new features introduced along with it like thinking levels, you will need to use v1.80.8-stable.1 or above.
+:::
 
 ## Deploy this version
 
@@ -231,6 +236,11 @@ response = completion(
 )
 print(response)
 ```
+
+:::note
+If using this model via vertex_ai, keep the location as global as this is the only supported location as of now.
+:::
+
 
 ## `reasoning_effort` Mapping for Gemini 3+
 

@@ -2,8 +2,16 @@ import json
 import os
 from typing import List
 
+import litellm
 from fastapi import APIRouter, Depends, HTTPException
 
+from litellm._logging import verbose_logger
+from litellm.litellm_core_utils.get_blog_posts import (
+    BlogPost,
+    BlogPostsResponse,
+    GetBlogPosts,
+    get_blog_posts,
+)
 from litellm.proxy._types import CommonProxyErrors
 from litellm.proxy.auth.user_api_key_auth import user_api_key_auth
 from litellm.types.agents import AgentCard
@@ -29,7 +37,8 @@ router = APIRouter()
 )
 async def public_model_hub():
     import litellm
-    from litellm.proxy.proxy_server import _get_model_group_info, llm_router
+    from litellm.proxy.proxy_server import _get_model_group_info, llm_router, prisma_client
+    from litellm.proxy.health_endpoints._health_endpoints import _convert_health_check_to_dict
 
     if llm_router is None:
         raise HTTPException(
@@ -43,6 +52,28 @@ async def public_model_hub():
             all_models_str=litellm.public_model_groups,
             model_group=None,
         )
+
+    # Fetch health check information if available
+    health_checks_map = {}
+    if prisma_client is not None:
+        try:
+            latest_checks = await prisma_client.get_all_latest_health_checks()
+            for check in latest_checks:
+                key = check.model_id if check.model_id else check.model_name
+                if key:
+                    health_check_dict = _convert_health_check_to_dict(check)
+                    health_checks_map[key] = health_check_dict
+                    if check.model_name:
+                        health_checks_map[check.model_name] = health_check_dict
+        except Exception:
+            pass
+
+    for model_group in model_groups:
+        health_info = health_checks_map.get(model_group.model_group)
+        if health_info:
+            model_group.health_status = health_info.get("status")
+            model_group.health_response_time = health_info.get("response_time_ms")
+            model_group.health_checked_at = health_info.get("checked_at")
 
     return model_groups
 
@@ -168,6 +199,30 @@ async def get_litellm_model_cost_map():
             status_code=500,
             detail=f"Internal Server Error ({str(e)})",
         )
+
+
+@router.get(
+    "/public/litellm_blog_posts",
+    tags=["public"],
+    response_model=BlogPostsResponse,
+)
+async def get_litellm_blog_posts():
+    """
+    Public endpoint to get the latest LiteLLM blog posts.
+
+    Fetches from GitHub with a 1-hour in-process cache.
+    Falls back to the bundled local backup on any failure.
+    """
+    try:
+        posts_data = get_blog_posts(url=litellm.blog_posts_url)
+    except Exception as e:
+        verbose_logger.warning(
+            "LiteLLM: get_litellm_blog_posts endpoint fallback triggered: %s", str(e)
+        )
+        posts_data = GetBlogPosts.load_local_blog_posts()
+
+    posts = [BlogPost(**p) for p in posts_data[:5]]
+    return BlogPostsResponse(posts=posts)
 
 
 @router.get(
