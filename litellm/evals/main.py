@@ -152,10 +152,10 @@ def create_eval(
             custom_llm_provider = "openai"
 
         # Get provider config
-        evals_api_provider_config: Optional[
-            BaseEvalsAPIConfig
-        ] = ProviderConfigManager.get_provider_evals_api_config(  # type: ignore
-            provider=litellm.LlmProviders(custom_llm_provider),
+        evals_api_provider_config: Optional[BaseEvalsAPIConfig] = (
+            ProviderConfigManager.get_provider_evals_api_config(  # type: ignore
+                provider=litellm.LlmProviders(custom_llm_provider),
+            )
         )
 
         if evals_api_provider_config is None:
@@ -193,7 +193,8 @@ def create_eval(
         )
 
         # Pre-call logging
-        litellm_logging_obj.update_environment_variables(
+        litellm_logging_obj.update_from_kwargs(
+            kwargs=kwargs,
             model=None,
             optional_params=request_body,
             litellm_params={
@@ -342,10 +343,10 @@ def list_evals(
             custom_llm_provider = "openai"
 
         # Get provider config
-        evals_api_provider_config: Optional[
-            BaseEvalsAPIConfig
-        ] = ProviderConfigManager.get_provider_evals_api_config(  # type: ignore
-            provider=litellm.LlmProviders(custom_llm_provider),
+        evals_api_provider_config: Optional[BaseEvalsAPIConfig] = (
+            ProviderConfigManager.get_provider_evals_api_config(  # type: ignore
+                provider=litellm.LlmProviders(custom_llm_provider),
+            )
         )
 
         if evals_api_provider_config is None:
@@ -382,7 +383,8 @@ def list_evals(
         )
 
         # Pre-call logging
-        litellm_logging_obj.update_environment_variables(
+        litellm_logging_obj.update_from_kwargs(
+            kwargs=kwargs,
             model=None,
             optional_params=query_params,
             litellm_params={
@@ -511,10 +513,10 @@ def get_eval(
             custom_llm_provider = "openai"
 
         # Get provider config
-        evals_api_provider_config: Optional[
-            BaseEvalsAPIConfig
-        ] = ProviderConfigManager.get_provider_evals_api_config(  # type: ignore
-            provider=litellm.LlmProviders(custom_llm_provider),
+        evals_api_provider_config: Optional[BaseEvalsAPIConfig] = (
+            ProviderConfigManager.get_provider_evals_api_config(  # type: ignore
+                provider=litellm.LlmProviders(custom_llm_provider),
+            )
         )
 
         if evals_api_provider_config is None:
@@ -536,7 +538,8 @@ def get_eval(
         )
 
         # Pre-call logging
-        litellm_logging_obj.update_environment_variables(
+        litellm_logging_obj.update_from_kwargs(
+            kwargs=kwargs,
             model=None,
             optional_params={"eval_id": eval_id},
             litellm_params={
@@ -679,10 +682,10 @@ def update_eval(
             custom_llm_provider = "openai"
 
         # Get provider config
-        evals_api_provider_config: Optional[
-            BaseEvalsAPIConfig
-        ] = ProviderConfigManager.get_provider_evals_api_config(  # type: ignore
-            provider=litellm.LlmProviders(custom_llm_provider),
+        evals_api_provider_config: Optional[BaseEvalsAPIConfig] = (
+            ProviderConfigManager.get_provider_evals_api_config(  # type: ignore
+                provider=litellm.LlmProviders(custom_llm_provider),
+            )
         )
 
         if evals_api_provider_config is None:
@@ -760,7 +763,8 @@ def update_eval(
         )
 
         # Pre-call logging
-        litellm_logging_obj.update_environment_variables(
+        litellm_logging_obj.update_from_kwargs(
+            kwargs=kwargs,
             model=None,
             optional_params=request_body,
             litellm_params={
@@ -889,10 +893,10 @@ def delete_eval(
             custom_llm_provider = "openai"
 
         # Get provider config
-        evals_api_provider_config: Optional[
-            BaseEvalsAPIConfig
-        ] = ProviderConfigManager.get_provider_evals_api_config(  # type: ignore
-            provider=litellm.LlmProviders(custom_llm_provider),
+        evals_api_provider_config: Optional[BaseEvalsAPIConfig] = (
+            ProviderConfigManager.get_provider_evals_api_config(  # type: ignore
+                provider=litellm.LlmProviders(custom_llm_provider),
+            )
         )
 
         if evals_api_provider_config is None:
@@ -914,7 +918,8 @@ def delete_eval(
         )
 
         # Pre-call logging
-        litellm_logging_obj.update_environment_variables(
+        litellm_logging_obj.update_from_kwargs(
+            kwargs=kwargs,
             model=None,
             optional_params={"eval_id": eval_id},
             litellm_params={
@@ -1042,10 +1047,10 @@ def cancel_eval(
             custom_llm_provider = "openai"
 
         # Get provider config
-        evals_api_provider_config: Optional[
-            BaseEvalsAPIConfig
-        ] = ProviderConfigManager.get_provider_evals_api_config(  # type: ignore
-            provider=litellm.LlmProviders(custom_llm_provider),
+        evals_api_provider_config: Optional[BaseEvalsAPIConfig] = (
+            ProviderConfigManager.get_provider_evals_api_config(  # type: ignore
+                provider=litellm.LlmProviders(custom_llm_provider),
+            )
         )
 
         if evals_api_provider_config is None:
@@ -1071,7 +1076,8 @@ def cancel_eval(
         )
 
         # Pre-call logging
-        litellm_logging_obj.update_environment_variables(
+        litellm_logging_obj.update_from_kwargs(
+            kwargs=kwargs,
             model=None,
             optional_params={"eval_id": eval_id},
             litellm_params={
@@ -1224,10 +1230,10 @@ def create_run(
             custom_llm_provider = "openai"
 
         # Get provider config
-        evals_api_provider_config: Optional[
-            BaseEvalsAPIConfig
-        ] = ProviderConfigManager.get_provider_evals_api_config(  # type: ignore
-            provider=litellm.LlmProviders(custom_llm_provider),
+        evals_api_provider_config: Optional[BaseEvalsAPIConfig] = (
+            ProviderConfigManager.get_provider_evals_api_config(  # type: ignore
+                provider=litellm.LlmProviders(custom_llm_provider),
+            )
         )
 
         if evals_api_provider_config is None:
@@ -1262,7 +1268,8 @@ def create_run(
         )
 
         # Pre-call logging
-        litellm_logging_obj.update_environment_variables(
+        litellm_logging_obj.update_from_kwargs(
+            kwargs=kwargs,
             model=None,
             optional_params=request_body,
             litellm_params={
@@ -1411,10 +1418,10 @@ def list_runs(
             custom_llm_provider = "openai"
 
         # Get provider config
-        evals_api_provider_config: Optional[
-            BaseEvalsAPIConfig
-        ] = ProviderConfigManager.get_provider_evals_api_config(  # type: ignore
-            provider=litellm.LlmProviders(custom_llm_provider),
+        evals_api_provider_config: Optional[BaseEvalsAPIConfig] = (
+            ProviderConfigManager.get_provider_evals_api_config(  # type: ignore
+                provider=litellm.LlmProviders(custom_llm_provider),
+            )
         )
 
         if evals_api_provider_config is None:
@@ -1450,7 +1457,8 @@ def list_runs(
         )
 
         # Pre-call logging
-        litellm_logging_obj.update_environment_variables(
+        litellm_logging_obj.update_from_kwargs(
+            kwargs=kwargs,
             model=None,
             optional_params={"eval_id": eval_id, **query_params},
             litellm_params={
@@ -1584,10 +1592,10 @@ def get_run(
             custom_llm_provider = "openai"
 
         # Get provider config
-        evals_api_provider_config: Optional[
-            BaseEvalsAPIConfig
-        ] = ProviderConfigManager.get_provider_evals_api_config(  # type: ignore
-            provider=litellm.LlmProviders(custom_llm_provider),
+        evals_api_provider_config: Optional[BaseEvalsAPIConfig] = (
+            ProviderConfigManager.get_provider_evals_api_config(  # type: ignore
+                provider=litellm.LlmProviders(custom_llm_provider),
+            )
         )
 
         if evals_api_provider_config is None:
@@ -1610,7 +1618,8 @@ def get_run(
         )
 
         # Pre-call logging
-        litellm_logging_obj.update_environment_variables(
+        litellm_logging_obj.update_from_kwargs(
+            kwargs=kwargs,
             model=None,
             optional_params={"eval_id": eval_id, "run_id": run_id},
             litellm_params={
@@ -1743,10 +1752,10 @@ def cancel_run(
             custom_llm_provider = "openai"
 
         # Get provider config
-        evals_api_provider_config: Optional[
-            BaseEvalsAPIConfig
-        ] = ProviderConfigManager.get_provider_evals_api_config(  # type: ignore
-            provider=litellm.LlmProviders(custom_llm_provider),
+        evals_api_provider_config: Optional[BaseEvalsAPIConfig] = (
+            ProviderConfigManager.get_provider_evals_api_config(  # type: ignore
+                provider=litellm.LlmProviders(custom_llm_provider),
+            )
         )
 
         if evals_api_provider_config is None:
@@ -1773,7 +1782,8 @@ def cancel_run(
         )
 
         # Pre-call logging
-        litellm_logging_obj.update_environment_variables(
+        litellm_logging_obj.update_from_kwargs(
+            kwargs=kwargs,
             model=None,
             optional_params={"eval_id": eval_id, "run_id": run_id},
             litellm_params={
@@ -1911,10 +1921,10 @@ def delete_run(
             custom_llm_provider = "openai"
 
         # Get provider config
-        evals_api_provider_config: Optional[
-            BaseEvalsAPIConfig
-        ] = ProviderConfigManager.get_provider_evals_api_config(  # type: ignore
-            provider=litellm.LlmProviders(custom_llm_provider),
+        evals_api_provider_config: Optional[BaseEvalsAPIConfig] = (
+            ProviderConfigManager.get_provider_evals_api_config(  # type: ignore
+                provider=litellm.LlmProviders(custom_llm_provider),
+            )
         )
 
         if evals_api_provider_config is None:
@@ -1941,7 +1951,8 @@ def delete_run(
         )
 
         # Pre-call logging
-        litellm_logging_obj.update_environment_variables(
+        litellm_logging_obj.update_from_kwargs(
+            kwargs=kwargs,
             model=None,
             optional_params={"eval_id": eval_id, "run_id": run_id},
             litellm_params={
